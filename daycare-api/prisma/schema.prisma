@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  RESPONSAVEL
+  CUIDADORA
+  ADMIN
+}
+
+enum AppointmentStatus {
+  PENDENTE
+  CONFIRMADO
+  RECUSADO
+  CANCELADO
+  CONCLUIDO
+  REMOVIDO
+}
+
+enum PaymentMethod {
+  PIX
+  CARD
+}
+
+enum PaymentStatus {
+  PENDENTE
+  PAGO
+  FALHOU
+  ESTORNADO
+  CANCELADO
+}
+
+enum Weekday {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
+enum AvailabilityBlockType {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isActive  Boolean  @default(true)
+
+  role         UserRole
+  name         String
+  email        String   @unique
+  passwordHash String
+
+  phone     String?
+  avatarUrl String?
+  birthDate DateTime?
+
+  caregiverProfile CaregiverProfile?
+
+  weeklyAvailability CaregiverWeeklyAvailability[]
+  availabilityBlocks CaregiverAvailabilityBlock[]
+
+  appointmentsAsParent    Appointment[] @relation("ParentAppointments")
+  appointmentsAsCaregiver Appointment[] @relation("CaregiverAppointments")
+
+  reviewsGiven    Review[] @relation("ReviewsGiven")
+  reviewsReceived Review[] @relation("ReviewsReceived")
+
+  conversations ConversationParticipant[]
+  messagesSent  Message[]                 @relation("MessagesSent")
+
+  availabilityBlocksCreated CaregiverAvailabilityBlock[] @relation("AvailabilityBlocksCreated")
+
+  @@index([role])
+  @@index([isActive])
+}
+
+model CaregiverProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String @unique @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  bio             String?
+  hourlyRateCents Int      @default(0)
+  city            String?
+  state           String?
+  specialties     String[]
+
+  timeZone String?
+
+  experienceYears Int?
+  maxChildren     Int?
+
+  ratingAvg   Float @default(0)
+  ratingCount Int   @default(0)
+
+  @@index([hourlyRateCents])
+  @@index([ratingAvg])
+}
+
+model CaregiverWeeklyAvailability {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  caregiverId String @db.Uuid
+  caregiver   User   @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+
+  weekday  Weekday
+  startMin Int
+  endMin   Int
+  isActive Boolean @default(true)
+
+  @@index([caregiverId, weekday])
+  @@index([caregiverId, isActive])
+}
+
+model CaregiverAvailabilityBlock {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  caregiverId String @db.Uuid
+  caregiver   User   @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+
+  type    AvailabilityBlockType @default(UNAVAILABLE)
+  startAt DateTime
+  endAt   DateTime
+  reason  String?
+
+  createdByUserId String? @db.Uuid
+  createdByUser   User?   @relation("AvailabilityBlocksCreated", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([caregiverId, startAt])
+  @@index([caregiverId, endAt])
+  @@index([type])
+}
+
+model Appointment {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  status AppointmentStatus @default(PENDENTE)
+
+  parentId String @db.Uuid
+  parent   User   @relation("ParentAppointments", fields: [parentId], references: [id], onDelete: Restrict)
+
+  caregiverId String @db.Uuid
+  caregiver   User   @relation("CaregiverAppointments", fields: [caregiverId], references: [id], onDelete: Restrict)
+
+  startAt DateTime
+  endAt   DateTime
+  notes   String?
+
+  hourlyRateCents Int
+  totalCents      Int
+
+  payment Payment?
+  review  Review?
+
+  conversations Conversation[]
+  messages      Message[]
+
+  @@index([parentId, createdAt])
+  @@index([caregiverId, createdAt])
+  @@index([status])
+  @@index([startAt])
+}
+
+model Payment {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointmentId String      @unique @db.Uuid
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  method PaymentMethod
+  status PaymentStatus @default(PENDENTE)
+
+  amountCents Int
+
+  provider          String?
+  providerPaymentId String?
+  qrCode            String?
+  pixCopyPaste      String?
+
+  paidAt DateTime?
+
+  @@index([status, createdAt])
+  @@index([method])
+}
+
+model Review {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointmentId String      @unique @db.Uuid
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  authorId String @db.Uuid
+  author   User   @relation("ReviewsGiven", fields: [authorId], references: [id], onDelete: Restrict)
+
+  targetId String @db.Uuid
+  target   User   @relation("ReviewsReceived", fields: [targetId], references: [id], onDelete: Restrict)
+
+  rating  Int
+  comment String?
+
+  @@index([targetId, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model Conversation {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  isDirect Boolean @default(true)
+
+  directKey String? @unique
+
+  appointmentId String?      @db.Uuid
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  lastMessageAt   DateTime?
+  lastMessageText String?
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([appointmentId])
+  @@index([lastMessageAt])
+  @@index([isDirect])
+}
+
+model ConversationParticipant {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+
+  conversationId String       @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Controle de leitura / notificações
+  lastReadAt DateTime?
+  muted      Boolean   @default(false)
+
+  // Evita participante duplicado na mesma conversa
+  @@unique([conversationId, userId])
+  @@index([userId, createdAt])
+  @@index([conversationId, createdAt])
+}
+
+model Message {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+
+  conversationId String       @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId String @db.Uuid
+  sender   User   @relation("MessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+
+  appointmentId String?      @db.Uuid
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  content String
+
+  editedAt  DateTime?
+  deletedAt DateTime?
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([appointmentId])
+}
