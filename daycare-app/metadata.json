@@ -1,0 +1,5 @@
+{
+  "name": "DayCare",
+  "description": "Uma plataforma que conecta pais a profissionais de cuidados infantis.",
+  "requestFramePermissions": ["camera", "geolocation"]
+}
